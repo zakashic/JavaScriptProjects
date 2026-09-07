@@ -8,3 +8,6 @@ Replace the redirecting links with direct links
 
 [ReturnScrollable](https://github.com/zakashic/ViolentmonkeyScripts/blob/main/ReturnScrollable.js)  
 Enable scroll functionality after blocking pop-ups on certain sites.
+
+[Google Keep Auto Dark](https://github.com/zakashic/ViolentmonkeyScripts/blob/main/Google-Keep-Auto-Dark.js)  
+Sync Google Keep's built-in dark theme with your system color scheme.

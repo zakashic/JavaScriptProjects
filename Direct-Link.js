@@ -4,7 +4,7 @@
 // @description  Replace redirect links with direct links
 // @description:zh-CN  将页面内所有重定向式的链接替换为直链
 // @namespace    https://github.com/cilxe/JavaScriptProjects
-// @version      0.3.0
+// @version      0.3.1
 // @author       zakashic
 // @match        *://*.youtube.com/*
 // @match        *://*.zhihu.com/*
@@ -358,8 +358,12 @@
 })();
 
 /*
-v0.2.5 2025.06.01
-- Added theverge.com|7tiv.net|douban.com|sourceForge.net.
+v0.3.1 2026.09.07
+- Optimized performance with debounced scroll handlers.
+- Updated metadata and high-definition icon.
+
+v0.3.0 2026.09.07
+- Fixed language detection, resolved array mutation bugs.
 - Optimized performance and error handling.
 - Maintained all existing features with DS.
 

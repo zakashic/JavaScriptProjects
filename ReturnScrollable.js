@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Return Scrollable
-// @namespace    https://github.com/cilxe/JavaScriptProjects
-// @version      0.2.2
+// @namespace    https://github.com/zakashic/ViolentmonkeyScripts
+// @version      0.2.3
 // @description  Enable scroll functionality after blocking pop-ups on certain sites.
 // @author       zakashic
 // @match        *://*/*

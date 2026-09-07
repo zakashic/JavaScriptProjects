@@ -1,10 +1,8 @@
 // ==UserScript==
 // @name         Direct Link
-// @name:zh-CN   重定向链接转直链
+// @namespace    https://github.com/zakashic/ViolentmonkeyScripts
+// @version      0.3.2
 // @description  Replace redirect links with direct links
-// @description:zh-CN  将页面内所有重定向式的链接替换为直链
-// @namespace    https://github.com/cilxe/JavaScriptProjects
-// @version      0.3.1
 // @author       zakashic
 // @match        *://*.youtube.com/*
 // @match        *://*.zhihu.com/*

@@ -87,10 +87,8 @@
         'spm_id_from', 'dynamicspm_id_from', 'extra_jump_from', 'search_source',
         'bsource', 'msource', 'csource',
       ],
-      paramRegex: /^(utm_|share_|spm|from_)|(From|_from|source)$/,
+      paramRegex: /^(utm_|share_|spm|from_|track)|(From|_from|source)$/,
       hideSelectors: [
-        '.lt-row', '.bili-login-card', '.bili-mini-mask',
-        '.is-bottom', '.v-popover-content', '.unlogin-popover',
         '#right-bottom-banner', 'a[href*="cm.bilibili.com"]',
         '#anchor-guest-box-id', 'iframe[src*="live-lottery"]',
       ],
@@ -132,6 +130,16 @@
           document.querySelectorAll('meta[name="spm_prefix"]').forEach(m => m.remove());
           document.querySelectorAll('.bili-video-card[data-report*="tianma."]')
             .forEach(el => el.setAttribute('data-report', '0'));
+            
+          // 仅在未登录状态下隐藏弹窗，避免误伤已登录用户的历史/动态浮层
+          const rightEntry = document.querySelector('.right-entry-item, .item');
+          if (rightEntry && rightEntry.innerText.includes('登录')) {
+            safeAppendStyle('.lt-row, .bili-login-card, .bili-mini-mask, .is-bottom, .v-popover-content, .unlogin-popover { display: none !important; }');
+            const loginTab = rightEntry.querySelector('span');
+            if (loginTab) {
+              loginTab.outerHTML = '<a href="https://passport.bilibili.com/login" target="_blank" style="color: inherit; text-decoration: none;">登录</a>';
+            }
+          }
         }, { once: true });
 
         // 复制分享链接时净化（保留精准时间戳 t）
@@ -473,9 +481,7 @@
       params: ['game_version', 'visit_device', 'device_type', 'plat_type'],
       paramRegex: /^(track|utm|spm_|from_|hyl_|mhy_)|_from$/,
       onInit() {
-        const style = document.createElement('style');
-        style.textContent = 'body { overflow: auto !important; }';
-        (document.head || document.documentElement).appendChild(style);
+        safeAppendStyle('body { overflow: auto !important; }');
       },
     },
 
@@ -754,6 +760,27 @@
   const msg = I18N[lang];
 
   // ==========================================
+  // 工具函数：安全注入样式 (处理 Violentmonkey @run-at document-start 时 document.head 为 null 的情况)
+  // ==========================================
+  function safeAppendStyle(cssText) {
+    const style = document.createElement('style');
+    style.textContent = cssText;
+    const target = document.head || document.documentElement;
+    if (target) {
+      target.appendChild(style);
+    } else {
+      const observer = new MutationObserver((mutations, obs) => {
+        const t = document.head || document.documentElement;
+        if (t) {
+          t.appendChild(style);
+          obs.disconnect();
+        }
+      });
+      observer.observe(document, { childList: true, subtree: true });
+    }
+  }
+
+  // ==========================================
   // 4. 高性能核心引擎
   // ==========================================
   class CleanEngine {
@@ -767,7 +794,7 @@
       }) || {};
 
       // [P0 fix] standalone 站点不继承 COMMON_PARAMS
-      this.customParams = this.loadCustomParams();
+      this.customParams = this.loadCustomParams() || [];
       if (this.matchedRule.standalone) {
         this.paramSet = new Set([
           ...(this.matchedRule.params || []),
@@ -788,37 +815,49 @@
 
     init() {
       // 1. CSS 隐藏广告和弹窗
-      if (this.matchedRule.hideSelectors?.length) {
-        this.injectHideStyles(this.matchedRule.hideSelectors);
-      }
+      try {
+        if (this.matchedRule.hideSelectors?.length) {
+          this.injectHideStyles(this.matchedRule.hideSelectors);
+        }
+      } catch (e) { console.error(e); }
 
       // 2. 站点特定初始化
       if (typeof this.matchedRule.onInit === 'function') {
         try {
           this.matchedRule.onInit();
-        } catch (err) {
-          console.error('[Clean URLs] onInit error:', err);
+        } catch (e) {
+          console.error('[Clean Tracking URLs] 站点初始化失败:', e);
         }
       }
 
-      // 3. 地址栏净化
-      this.restoreAddressBar();
+      // 3. 地址栏净化 (多重生命周期拦截 + 轮询守护，对抗 Vue/React 内部状态路由)
+      try {
+        this.restoreAddressBar();
+        document.addEventListener('DOMContentLoaded', () => this.restoreAddressBar());
+        window.addEventListener('load', () => this.restoreAddressBar());
+        // 终极防线：每 500ms 巡检一次地址栏（仅在 URL 发生变动时触发，0 CPU 开销）
+        setInterval(() => this.restoreAddressBar(), 500);
+      } catch (e) { console.error('[Clean Tracking URLs] 地址栏净化失败:', e); }
 
       // 4. 全局捕获阶段事件委托
-      this.bindDelegatedEvents();
+      try {
+        this.bindDelegatedEvents();
+      } catch (e) { console.error('[Clean Tracking URLs] 事件委托绑定失败:', e); }
 
-      // 5. 增量 MutationObserver
-      this.bindMutationObserver();
+      // 5. 增量 MutationObserver (处理动态加载的 DOM)
+      try {
+        this.bindMutationObserver();
+      } catch (e) { console.error(e); }
 
-      // 6. 菜单和快捷键
-      this.registerMenus();
-      this.bindKeyboardShortcut();
+      // 6. 快捷键与菜单
+      try {
+        this.bindKeyboardShortcut();
+        this.registerMenus();
+      } catch (e) { console.error(e); }
     }
 
     injectHideStyles(selectors) {
-      const style = document.createElement('style');
-      style.textContent = `${selectors.join(', ')} { display: none !important; }`;
-      (document.head || document.documentElement).appendChild(style);
+      safeAppendStyle(`${selectors.join(', ')} { display: none !important; }`);
     }
 
     // 净化单个 URL（使用当前站点规则）
@@ -890,6 +929,24 @@
       if (this.matchedRule.cleanElement) {
         this.matchedRule.cleanElement(el, this);
       }
+
+      // 如果链接显示的文本包含纯 URL 且带有追踪参数，同步更新显示文本（保留可能的图标元素）
+      const cleanTextNodes = (node) => {
+        for (const child of node.childNodes) {
+          if (child.nodeType === 3) {
+            const val = child.nodeValue;
+            if (val && /^(https?:)?\/\//.test(val.trim())) {
+              const cleanedText = this.cleanUrl(val.trim());
+              if (cleanedText !== val.trim()) {
+                child.nodeValue = child.nodeValue.replace(val.trim(), cleanedText);
+              }
+            }
+          } else if (child.nodeType === 1 && child.tagName !== 'SVG') {
+            cleanTextNodes(child);
+          }
+        }
+      };
+      cleanTextNodes(el);
     }
 
     // 净化浏览器地址栏
@@ -901,10 +958,25 @@
       }
     }
 
+    // 从事件中安全提取链接元素（穿透 Web Components / Shadow DOM，如 B 站评论区）
+    getLinkFromEvent(e) {
+      if (typeof e.composedPath === 'function') {
+        const path = e.composedPath();
+        for (const node of path) {
+          if (node && node.nodeType === 1) {
+            if (node.tagName === 'A' || node.tagName === 'AREA') {
+              return node;
+            }
+          }
+        }
+      }
+      return e.target?.closest?.('a[href], area[href]');
+    }
+
     // 事件委托
     bindDelegatedEvents() {
       document.addEventListener('pointerover', (e) => {
-        const link = e.target?.closest?.('a[href], area[href]');
+        const link = this.getLinkFromEvent(e);
         if (link) this.cleanLinkElement(link);
       }, { capture: true, passive: true });
 
@@ -912,7 +984,7 @@
       const interceptEvents = ['pointerdown', 'click', 'auxclick', 'contextmenu'];
       interceptEvents.forEach((evtName) => {
         document.addEventListener(evtName, (e) => {
-          const link = e.target?.closest?.('a[href], area[href]');
+          const link = this.getLinkFromEvent(e);
           if (link) this.cleanLinkElement(link);
         }, { capture: true, passive: true });
       });
@@ -921,6 +993,46 @@
       window.addEventListener('urlchange', () => this.restoreAddressBar());
       window.addEventListener('popstate', () => this.restoreAddressBar(), { passive: true });
       window.addEventListener('hashchange', () => this.restoreAddressBar(), { passive: true });
+    }
+
+    // 穿透清洗（支持 open 模式的 Shadow DOM，带 __cleanDone 去重及事件驱动监听）
+    deepClean(root) {
+      if (!root) return;
+      if (root.__cleanDone) return;
+
+      if (root.tagName === 'A' || root.tagName === 'AREA') {
+        this.cleanLinkElement(root);
+        root.__cleanDone = true;
+        return;
+      }
+
+      if (root.querySelectorAll) {
+        const links = root.querySelectorAll('a[href], area[href]');
+        for (const link of links) {
+          if (!link.__cleanDone) {
+            this.cleanLinkElement(link);
+            link.__cleanDone = true;
+          }
+        }
+
+        // 定向穿透 Web Components 宿主（如 B 站评论区 bili-comments），挂载增量 Observer，0 轮询开销
+        const shadowHosts = root.querySelectorAll('bili-comments, bili-comment-thread-renderer, bili-comment-renderer');
+        for (const el of shadowHosts) {
+          if (el.shadowRoot && !el.__shadowObserved) {
+            el.__shadowObserved = true;
+            this.deepClean(el.shadowRoot);
+            // 局部增量监听：新评论插入时即时响应，随用随走
+            const shadowObs = new MutationObserver((mutations) => {
+              for (const m of mutations) {
+                for (const n of m.addedNodes) {
+                  if (n.nodeType === 1) this.deepClean(n);
+                }
+              }
+            });
+            shadowObs.observe(el.shadowRoot, { childList: true, subtree: true });
+          }
+        }
+      }
     }
 
     // 增量 MutationObserver
@@ -940,11 +1052,7 @@
           requestAnimationFrame(() => {
             while (nodesQueue.length > 0) {
               const el = nodesQueue.shift();
-              if (el.tagName === 'A' || el.tagName === 'AREA') {
-                this.cleanLinkElement(el);
-              } else if (el.querySelectorAll) {
-                el.querySelectorAll('a[href], area[href]').forEach(link => this.cleanLinkElement(link));
-              }
+              this.deepClean(el);
             }
             isScheduled = false;
           });
@@ -976,7 +1084,7 @@
 
     // 全量扫描（仅菜单/快捷键触发）
     cleanAllLinksNow() {
-      document.querySelectorAll('a[href], area[href]').forEach(link => this.cleanLinkElement(link));
+      this.deepClean(document.documentElement || document.body);
     }
 
     // ==========================================

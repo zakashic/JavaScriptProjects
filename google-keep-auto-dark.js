@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google Keep Auto Dark
 // @namespace    https://github.com/zakashic/ViolentmonkeyScripts
-// @version      1.3.1
+// @version      1.3.2
 // @description  Sync Google Keep's built-in dark theme with your system color scheme
 // @author       zakashic
 // @match        https://keep.google.com/*

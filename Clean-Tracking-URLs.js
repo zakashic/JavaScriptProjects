@@ -1,27 +1,9 @@
 // ==UserScript==
 // @name               跟踪链接净化 (Clean Tracking URLs)
-// @name:zh-CN         跟踪链接净化
-// @name:zh-TW         跟蹤鏈接凈化
-// @name:en            Clean Tracking URLs
-// @name:ja            トラッカーの浄化
-// @name:ko            추적 URL 정리
-// @name:ru            Очистить ссылки отслеживания
-// @name:de            Tracking-URLs bereinigen
-// @name:fr            Nettoyer les URLs de suivi
-// @name:es            Limpiar URLs de seguimiento
-// @namespace          https://github.com/cilxe/JavaScriptProjects
+// @namespace          https://github.com/zakashic/ViolentmonkeyScripts
 // @author             zakashic
-// @version            2.0.1
+// @version            2.0.2
 // @description        净化所有网站上的跟踪链接和事件 (高性能重构版，适配暴力猴 MV3 & 油猴)
-// @description:zh-CN  净化所有网站上的跟踪链接和事件 (高性能重构版，适配暴力猴 MV3 & 油猴)
-// @description:zh-TW  凈化網際網路上的所有網站鏈接和事件
-// @description:en     Clean all tracking URLs, block tracking events on all websites
-// @description:ja     すべてのサイトの追跡リンクとイベントをサニタイズする
-// @description:ko     모든 추적 URL 정리, 모든 웹사이트에서 추적 이벤트 차단
-// @description:ru     Очистить все ссылки отслеживания, заблокировать события отслеживания на всех веб-сайтах
-// @description:de     Alle Tracking-URLs bereinigen, Tracking-Ereignisse auf allen Websites blockieren
-// @description:fr     Nettoyer toutes les URLs de suivi, bloquer les événements de suivi sur tous les sites
-// @description:es     Limpiar todas las URLs de seguimiento, bloquear eventos de seguimiento en todos los sitios web
 // @match              *://*/*
 // @exclude            *://*.hdslb.com/*
 // @exclude            *://*.csdnimg.cn/*

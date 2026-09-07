@@ -4,8 +4,8 @@
 // @description  Replace redirect links with direct links
 // @description:zh-CN  将页面内所有重定向式的链接替换为直链
 // @namespace    https://github.com/cilxe/JavaScriptProjects
-// @version      0.2.5
-// @author       cilxe
+// @version      0.3.0
+// @author       zakashic
 // @match        *://*.youtube.com/*
 // @match        *://*.zhihu.com/*
 // @match        *://*.steampowered.com/*

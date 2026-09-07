@@ -4,7 +4,7 @@
 // @description  Replace redirect links with direct links
 // @description:zh-CN  将页面内所有重定向式的链接替换为直链
 // @namespace    https://github.com/cilxe/JavaScriptProjects
-// @version      0.2.4
+// @version      0.2.5
 // @author       cilxe
 // @match        *://*.youtube.com/*
 // @match        *://*.zhihu.com/*
@@ -122,7 +122,8 @@
     case /(pixiv.net|deviantart.com)$/.test(pageHost):
       hostRegex = /(pixiv.net|deviantart.com)$/;
       linkDirect = (directURLParams, delayTime) => {
-        const timeoutID = setTimeout(() => {
+        if (linkDirect.timeoutID) clearTimeout(linkDirect.timeoutID);
+        linkDirect.timeoutID = setTimeout(() => {
           const links = doc.getElementsByTagName('a');
           for (let i = 0; i < links.length; i += 1) {
             if (hostRegex.test(links[i].hostname)) {
@@ -133,20 +134,21 @@
                 }
               });
               if (/jump.php|outgoing/.test(links[i].pathname)) {
-                if (links[i].href !== decodeURIComponent(links[i].search.substring(1, links[i].href.length))) {
-                  links[i].href = decodeURIComponent(links[i].search.substring(1, links[i].href.length));
+                if (links[i].href !== decodeURIComponent(links[i].search.substring(1))) {
+                  links[i].href = decodeURIComponent(links[i].search.substring(1));
                 }
               }
             }
           }
-          clearTimeout(timeoutID);
+          linkDirect.timeoutID = null;
         }, delayTime);
       };
       break;
     case /xda-developers.com$/.test(pageHost):
       hostRegex = /(xda-developers.com|shop-links.co|anrdoezrs.net|a9yw.net|pxf.io|viglink.com|awin1.com)$/;
       linkDirect = (directURLParams, delayTime) => {
-        const timeoutID = setTimeout(() => {
+        if (linkDirect.timeoutID) clearTimeout(linkDirect.timeoutID);
+        linkDirect.timeoutID = setTimeout(() => {
           const links = doc.getElementsByTagName('a');
           for (let i = 0; i < links.length; i += 1) {
             if (hostRegex.test(links[i].hostname)) {
@@ -158,35 +160,37 @@
               });
               let realLink = links[i].href;
               if (/https?/.test(links[i].search)) {
-                realLink = links[i].search.substring(1, links[i].href.length);
+                realLink = links[i].search.substring(1);
               } else if (/https?/.test(links[i].pathname)) {
-                realLink = links[i].pathname.substring(links[i].pathname.lastIndexOf('http'), links[i].href.length);
+                realLink = links[i].pathname.substring(links[i].pathname.lastIndexOf('http'));
               }
               if (links[i].href !== decodeURIComponent(realLink)) {
                 links[i].href = decodeURIComponent(realLink);
               }
             }
           }
-          clearTimeout(timeoutID);
+          linkDirect.timeoutID = null;
         }, delayTime);
       };
       break;
     case /^(tieba|ala).baidu.com$/.test(pageHost):
       linkDirect = (directURLParams, delayTime) => {
-        const timeoutID = setTimeout(() => {
+        if (linkDirect.timeoutID) clearTimeout(linkDirect.timeoutID);
+        linkDirect.timeoutID = setTimeout(() => {
           const links = doc.getElementsByClassName('j-no-opener-url');
           for (let i = 0; i < links.length; i += 1) {
             if (/^jump2?.bdimg.com$/.test(links[i].hostname) && links[i].innerText.startsWith('http')) {
               links[i].href = links[i].innerText;
             }
           }
-          clearTimeout(timeoutID);
+          linkDirect.timeoutID = null;
         }, delayTime);
       };
       break;
     case /sourceforge.net$/.test(pageHost):
       linkDirect = (directURLParams, delayTime) => {
-        const timeoutID = setTimeout(() => {
+        if (linkDirect.timeoutID) clearTimeout(linkDirect.timeoutID);
+        linkDirect.timeoutID = setTimeout(() => {
           const links = doc.getElementsByTagName('a');
           for (let i = 0; i < links.length; i += 1) {
             if (/sourceforge.net$/.test(links[i].hostname)) {
@@ -196,13 +200,14 @@
               }
             }
           }
-          clearTimeout(timeoutID);
+          linkDirect.timeoutID = null;
         }, delayTime);
       };
       break;
     default:
       linkDirect = (directURLParams, delayTime) => {
-        const timeoutID = setTimeout(() => {
+        if (linkDirect.timeoutID) clearTimeout(linkDirect.timeoutID);
+        linkDirect.timeoutID = setTimeout(() => {
           const links = doc.getElementsByTagName('a');
           for (let i = 0; i < links.length; i += 1) {
             if (hostRegex.test(links[i].hostname)) {
@@ -214,7 +219,7 @@
               });
             }
           }
-          clearTimeout(timeoutID);
+          linkDirect.timeoutID = null;
         }, delayTime);
       };
       break;
@@ -246,16 +251,13 @@
   (() => {
     let indexParam;
     let MenuTitle;
-    switch (navigator.language) {
-      case 'zh-CN' || 'zh-SG':
-        MenuTitle = '手动重新替换';
-        break;
-      case 'zh-TW' || 'zh-HK':
-        MenuTitle = '手動再次替換';
-        break;
-      default:
-        MenuTitle = 'Retry link replacing.';
-        break;
+    const lang = navigator.language || '';
+    if (lang.startsWith('zh-TW') || lang.startsWith('zh-HK')) {
+      MenuTitle = '手動再次替換';
+    } else if (lang.startsWith('zh')) {
+      MenuTitle = '手动重新替换';
+    } else {
+      MenuTitle = 'Retry link replacing.';
     }
 
     const adjust = /(hoyolab|mozilla|firefox)\.(com|org)$/.test(pageHost);
@@ -298,30 +300,33 @@
         indexParam = ['redirectTo'];
         break;
       case pageHost.endsWith('oschina.net'):
-        INDEX_URL.push('goto_page');
-        indexParam = INDEX_URL;
+        indexParam = [...INDEX_URL, 'goto_page'];
         break;
       case pageHost.endsWith('xda-developers.com'):
-        INDEX_URL.push('u', 'ued', 'referer');
-        indexParam = INDEX_URL;
+        indexParam = [...INDEX_URL, 'u', 'ued', 'referer'];
         break;
       case /(union-click.jd.com|www.linkstars.com)$/.test(pageHost):
         indexParam = INDEX_TO;
-        if (urlParam.has(indexParam) && /^https?/.test(urlParam.get(indexParam))) {
-          window.stop();
-          window.location.href = decodeURIComponent(urlParam.get(indexParam));
+        for (const k of indexParam) {
+          if (urlParam.has(k) && /^https?/.test(urlParam.get(k))) {
+            window.stop();
+            window.location.href = decodeURIComponent(urlParam.get(k));
+            break;
+          }
         }
         break;
       case /(theverge.com|7tiv.net)$/.test(pageHost):
         hostRegex = /sjv.io$/;
-        INDEX_URL.push('u');
-        indexParam = INDEX_URL;
-        if (pageHost.endsWith('7tiv.net')
-                    && new URLSearchParams(pageParams).has(indexParam)) {
-          window.stop();
-          window.location.href = decodeURIComponent(
-            new URLSearchParams(pageParams).get(indexParam),
-          );
+        indexParam = [...INDEX_URL, 'u'];
+        if (pageHost.endsWith('7tiv.net')) {
+          const params = new URLSearchParams(pageParams);
+          for (const k of indexParam) {
+            if (params.has(k) && /^https?/.test(params.get(k))) {
+              window.stop();
+              window.location.href = decodeURIComponent(params.get(k));
+              break;
+            }
+          }
         }
         break;
       default:

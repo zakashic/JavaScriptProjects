@@ -94,6 +94,7 @@
       ],
       // [P2 fix] 链接元素 DOM 变换：清理追踪属性 + data-url 清洗替换
       cleanElement(el, engine) {
+        if (!el || typeof el.removeAttribute !== 'function') return;
         el.removeAttribute('data-mod');
         el.removeAttribute('data-spmid');
         el.removeAttribute('data-idx');
@@ -104,17 +105,12 @@
           const targetUrl = dataLink.startsWith('//') ? `https:${dataLink}` : dataLink;
           let cleanedUrl;
           try {
-            const parsed = new URL(targetUrl);
-            if (parsed.hostname.endsWith('bilibili.com') || parsed.hostname.endsWith('biligame.com')) {
-              cleanedUrl = engine.cleanUrl(targetUrl);
-            } else {
-              // 外部域名使用通用规则清洗
-              cleanedUrl = engine.cleanUrlGeneric(targetUrl);
-            }
+            cleanedUrl = engine.cleanUrl(targetUrl);
           } catch {
             cleanedUrl = targetUrl;
           }
           el.href = cleanedUrl;
+          el.setAttribute('data-url', cleanedUrl);
           el.classList.remove('jump-link');
           el.target = '_blank';
           // 同步更新显示文本（如评论区直接显示 URL 的链接）
@@ -201,7 +197,7 @@
       excludeParams(url) {
         const excluded = [];
         if (url.hostname === 'passport.baidu.com') excluded.push('u');
-        if (window.location.hostname.endsWith('tieba.baidu.com')) excluded.push('ie');
+        if (url.hostname.endsWith('tieba.baidu.com') || window.location.hostname.endsWith('tieba.baidu.com')) excluded.push('ie');
         return excluded;
       },
       cleanCustom(url) {
@@ -257,8 +253,8 @@
       ],
       paramRegex: /_ref|^(utm_|ref|pd_rd_|pf_rd_|track|sc_)/i,
       cleanCustom(url) {
-        if (url.pathname.includes('/ref')) {
-          url.pathname = url.pathname.substring(0, url.pathname.indexOf('/ref'));
+        if (/\/ref[=_/].*$/i.test(url.pathname)) {
+          url.pathname = url.pathname.replace(/\/ref[=_/].*$/i, '');
         }
       },
     },
@@ -786,31 +782,46 @@
   class CleanEngine {
     constructor() {
       this.currentHost = window.location.hostname;
+      this.ruleCache = new Map();
+      this.commonParamSet = new Set(COMMON_PARAMS);
+
+      // 预编译各站点规则的参数集合与正则
+      SITE_RULES.forEach((rule) => {
+        if (rule.standalone) {
+          rule.paramSet = new Set(rule.params || []);
+        } else {
+          rule.paramSet = new Set([...COMMON_PARAMS, ...(rule.params || [])]);
+        }
+        rule.paramRegex = rule.paramRegex || COMMON_PARAM_REGEX;
+      });
 
       // 匹配当前站点的专属规则
-      this.matchedRule = SITE_RULES.find((r) => {
-        if (typeof r.matcher === 'function') return r.matcher(this.currentHost);
-        return r.matcher.test(this.currentHost);
-      }) || {};
+      this.matchedRule = this.getRuleForHost(this.currentHost) || {};
 
-      // [P0 fix] standalone 站点不继承 COMMON_PARAMS
+      // 加载当前域名的自定义参数
       this.customParams = this.loadCustomParams() || [];
-      if (this.matchedRule.standalone) {
-        this.paramSet = new Set([
-          ...(this.matchedRule.params || []),
-          ...this.customParams,
-        ]);
-      } else {
-        this.paramSet = new Set([
-          ...COMMON_PARAMS,
-          ...(this.matchedRule.params || []),
-          ...this.customParams,
-        ]);
+      if (this.customParams.length > 0) {
+        this.customParams.forEach((p) => {
+          if (this.matchedRule.paramSet) this.matchedRule.paramSet.add(p);
+          this.commonParamSet.add(p);
+        });
       }
 
-      this.paramRegex = this.matchedRule.paramRegex || COMMON_PARAM_REGEX;
-
       this.init();
+    }
+
+    getRuleForHost(hostname) {
+      if (!hostname) return null;
+      if (hostname === this.currentHost && this.matchedRule) return this.matchedRule;
+      let rule = this.ruleCache.get(hostname);
+      if (rule === undefined) {
+        rule = SITE_RULES.find((r) => {
+          if (typeof r.matcher === 'function') return r.matcher(hostname);
+          return r.matcher.test(hostname);
+        }) || null;
+        this.ruleCache.set(hostname, rule);
+      }
+      return rule;
     }
 
     init() {
@@ -860,55 +871,40 @@
       safeAppendStyle(`${selectors.join(', ')} { display: none !important; }`);
     }
 
-    // 净化单个 URL（使用当前站点规则）
+    // 净化单个 URL（优先使用目标链接域名对应的规则，实现跨站精准净化）
     cleanUrl(rawUrl, element = null) {
       if (!rawUrl || typeof rawUrl !== 'string') return rawUrl;
-      // 快速短路：若既无查询参数/Hash，当前站点又无自定义路径/URL处理钩子，直接跳过
-      if (!rawUrl.includes('?') && !rawUrl.includes('#') && !this.matchedRule.cleanCustom) return rawUrl;
+      // 快速跳过非 HTTP(S) 链接与页面内锚点
+      if (/^(javascript|mailto|tel|data):|^#/i.test(rawUrl.trim())) return rawUrl;
 
       try {
         const url = new URL(rawUrl, window.location.origin);
-        let modified = false;
+        const rule = this.getRuleForHost(url.hostname);
 
-        // [P3 fix] 条件排除：安全检查，不污染内部 paramSet
-        const excluded = this.matchedRule.excludeParams ? this.matchedRule.excludeParams(url) : null;
+        // 快速短路：若无查询参数及 Hash，且该规则无路径自定义清洗钩子，直接跳过
+        if (!url.search && !url.hash && (!rule || !rule.cleanCustom)) return rawUrl;
+
+        let modified = false;
+        const paramSet = rule ? rule.paramSet : this.commonParamSet;
+        const paramRegex = rule ? rule.paramRegex : COMMON_PARAM_REGEX;
+        const excluded = rule && rule.excludeParams ? rule.excludeParams(url) : null;
 
         // 反向遍历 URL 实际包含的参数
         for (const key of Array.from(url.searchParams.keys())) {
           if (excluded && excluded.includes(key)) continue;
-          if (this.paramSet.has(key) || this.paramRegex.test(key)) {
+          if (paramSet.has(key) || paramRegex.test(key)) {
             url.searchParams.delete(key);
             modified = true;
           }
         }
 
-        // [P3 fix] 站点专属钩子：通过比较 href 判断是否真正修改
-        if (this.matchedRule.cleanCustom) {
+        // 站点专属路径/哈希钩子
+        if (rule && rule.cleanCustom) {
           const hrefBefore = url.href;
-          this.matchedRule.cleanCustom(url, element);
+          rule.cleanCustom(url, element);
           if (url.href !== hrefBefore) modified = true;
         }
 
-        return modified ? url.href : rawUrl;
-      } catch {
-        return rawUrl;
-      }
-    }
-
-    // [P2 fix] 通用规则清洗（用于 B 站 data-url 等外部域名链接）
-    cleanUrlGeneric(rawUrl) {
-      if (!rawUrl || typeof rawUrl !== 'string') return rawUrl;
-      if (!rawUrl.includes('?') && !rawUrl.includes('#')) return rawUrl;
-      try {
-        const url = new URL(rawUrl);
-        let modified = false;
-        const commonSet = new Set(COMMON_PARAMS);
-        for (const key of Array.from(url.searchParams.keys())) {
-          if (commonSet.has(key) || COMMON_PARAM_REGEX.test(key)) {
-            url.searchParams.delete(key);
-            modified = true;
-          }
-        }
         return modified ? url.href : rawUrl;
       } catch {
         return rawUrl;
@@ -925,36 +921,43 @@
         el.href = cleaned;
       }
 
-      // [P2 fix] 站点级 DOM 变换（如 B 站 data-url、追踪属性清理）
-      if (this.matchedRule.cleanElement) {
-        this.matchedRule.cleanElement(el, this);
+      // 站点级 DOM 变换（优先匹配目标站点规则，若无则匹配当前站点规则）
+      const rule = this.getRuleForHost(el.hostname) || this.matchedRule;
+      if (rule && rule.cleanElement) {
+        rule.cleanElement(el, this);
       }
 
       // 如果链接显示的文本包含纯 URL 且带有追踪参数，同步更新显示文本（保留可能的图标元素）
-      const cleanTextNodes = (node) => {
-        for (const child of node.childNodes) {
-          if (child.nodeType === 3) {
-            const val = child.nodeValue;
-            if (val && /^(https?:)?\/\//.test(val.trim())) {
-              const cleanedText = this.cleanUrl(val.trim());
-              if (cleanedText !== val.trim()) {
-                child.nodeValue = child.nodeValue.replace(val.trim(), cleanedText);
+      if (el.textContent && el.textContent.includes('//')) {
+        const cleanTextNodes = (node) => {
+          for (const child of node.childNodes) {
+            if (child.nodeType === 3) {
+              const val = child.nodeValue;
+              if (val && /^(https?:)?\/\//.test(val.trim())) {
+                const cleanedText = this.cleanUrl(val.trim());
+                if (cleanedText !== val.trim()) {
+                  child.nodeValue = child.nodeValue.replace(val.trim(), () => cleanedText);
+                }
               }
+            } else if (child.nodeType === 1 && child.tagName !== 'SVG') {
+              cleanTextNodes(child);
             }
-          } else if (child.nodeType === 1 && child.tagName !== 'SVG') {
-            cleanTextNodes(child);
           }
-        }
-      };
-      cleanTextNodes(el);
+        };
+        cleanTextNodes(el);
+      }
     }
 
     // 净化浏览器地址栏
     restoreAddressBar() {
-      const currentUrl = window.location.href;
-      const cleaned = this.cleanUrl(currentUrl);
-      if (cleaned !== currentUrl) {
-        window.history.replaceState(window.history.state, '', cleaned);
+      try {
+        const currentUrl = window.location.href;
+        const cleaned = this.cleanUrl(currentUrl);
+        if (cleaned !== currentUrl) {
+          window.history.replaceState(window.history.state, '', cleaned);
+        }
+      } catch (e) {
+        // 忽略跨域 iframe 或特殊沙盒环境下 replaceState 的安全限制
       }
     }
 
@@ -996,9 +999,9 @@
     }
 
     // 穿透清洗（支持 open 模式的 Shadow DOM，带 __cleanDone 去重及事件驱动监听）
-    deepClean(root) {
+    deepClean(root, force = false) {
       if (!root) return;
-      if (root.__cleanDone) return;
+      if (root.__cleanDone && !force) return;
 
       if (root.tagName === 'A' || root.tagName === 'AREA') {
         this.cleanLinkElement(root);
@@ -1009,18 +1012,17 @@
       if (root.querySelectorAll) {
         const links = root.querySelectorAll('a[href], area[href]');
         for (const link of links) {
-          if (!link.__cleanDone) {
+          if (!link.__cleanDone || force) {
             this.cleanLinkElement(link);
             link.__cleanDone = true;
           }
         }
 
         // 定向穿透 Web Components 宿主（如 B 站评论区 bili-comments），挂载增量 Observer，0 轮询开销
-        const shadowHosts = root.querySelectorAll('bili-comments, bili-comment-thread-renderer, bili-comment-renderer');
-        for (const el of shadowHosts) {
-          if (el.shadowRoot && !el.__shadowObserved) {
+        const checkAndObserveShadow = (el) => {
+          if (el && el.shadowRoot && !el.__shadowObserved) {
             el.__shadowObserved = true;
-            this.deepClean(el.shadowRoot);
+            this.deepClean(el.shadowRoot, force);
             // 局部增量监听：新评论插入时即时响应，随用随走
             const shadowObs = new MutationObserver((mutations) => {
               for (const m of mutations) {
@@ -1031,6 +1033,12 @@
             });
             shadowObs.observe(el.shadowRoot, { childList: true, subtree: true });
           }
+        };
+
+        if (root.shadowRoot) checkAndObserveShadow(root);
+        const shadowHosts = root.querySelectorAll('bili-comments, bili-comment-thread-renderer, bili-comment-renderer');
+        for (const el of shadowHosts) {
+          checkAndObserveShadow(el);
         }
       }
     }
@@ -1049,7 +1057,15 @@
 
         if (!isScheduled && nodesQueue.length > 0) {
           isScheduled = true;
-          requestAnimationFrame(() => {
+          const schedule = (cb) => {
+            if (typeof requestAnimationFrame === 'function' && !document.hidden) {
+              requestAnimationFrame(cb);
+            } else {
+              setTimeout(cb, 16);
+            }
+          };
+
+          schedule(() => {
             while (nodesQueue.length > 0) {
               const el = nodesQueue.shift();
               this.deepClean(el);
@@ -1082,9 +1098,9 @@
       });
     }
 
-    // 全量扫描（仅菜单/快捷键触发）
+    // 全量扫描（仅菜单/快捷键触发，强制全量重扫）
     cleanAllLinksNow() {
-      this.deepClean(document.documentElement || document.body);
+      this.deepClean(document.documentElement || document.body, true);
     }
 
     // ==========================================
@@ -1106,7 +1122,10 @@
         if (typeof GM_setValue === 'function') {
           GM_setValue(this.currentHost, list);
         }
-        this.paramSet.add(paramName);
+        if (this.matchedRule.paramSet) {
+          this.matchedRule.paramSet.add(paramName);
+        }
+        this.commonParamSet.add(paramName);
         this.cleanAllLinksNow();
         this.restoreAddressBar();
       }
@@ -1119,7 +1138,10 @@
         if (typeof GM_setValue === 'function') {
           GM_setValue(this.currentHost, updated);
         }
-        this.paramSet.delete(paramName);
+        if (this.matchedRule.paramSet) {
+          this.matchedRule.paramSet.delete(paramName);
+        }
+        this.commonParamSet.delete(paramName);
       } else {
         alert(msg.noParam);
       }

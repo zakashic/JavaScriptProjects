@@ -15,12 +15,15 @@
 
 (() => {
   const css = document.createElement('style');
-  css.innerText += 'body { overflow: auto !important; }';
+  css.textContent = 'html, body { overflow: auto !important; }';
 
   // Function to append the CSS to the document head
   function appendCSS() {
-    document.head.append(css);
-    console.log('CSS applied: body { overflow: auto !important; }');
+    const target = document.head || document.documentElement;
+    if (target) {
+      target.append(css);
+    }
+    console.log('CSS applied: html, body { overflow: auto !important; }');
   }
 
   // Get stored sites from GM_getValue

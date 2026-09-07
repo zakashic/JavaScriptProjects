@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Return Scrollable
 // @namespace    https://github.com/cilxe/JavaScriptProjects
-// @version      0.1
+// @version      0.2.0
 // @description  Enable scroll functionality after blocking pop-ups on certain sites.
-// @author       cilxe
+// @author       zakashic
 // @match        *://*/*
 // @icon         None
 // @grant        GM_registerMenuCommand
